@@ -165,6 +165,14 @@ export default function Page() {
     window.localStorage.setItem('skycast-recent-cities', JSON.stringify(recentCities.slice(0, 5)));
   }, [recentCities]);
 
+  useEffect(() => {
+    const refreshTimer = window.setInterval(() => {
+      void fetchWeather(cityInput);
+    }, 10 * 60 * 1000);
+
+    return () => window.clearInterval(refreshTimer);
+  }, [cityInput]);
+
   const rememberCity = (city: string) => {
     setRecentCities((current) => {
       const nextCities = [city, ...current.filter((entry) => entry.toLowerCase() !== city.toLowerCase())];
@@ -382,6 +390,11 @@ export default function Page() {
               ))}
             </div>
           </form>
+
+          <div className="forecast-badge" style={{ marginTop: '14px' }}>
+            <RefreshCw size={14} />
+            Auto-refreshes every 10 minutes for the active city
+          </div>
 
           {loadingWeather ? <LoadingBanner /> : null}
           {error ? <div className="error-banner">{error}</div> : null}
