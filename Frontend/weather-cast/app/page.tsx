@@ -127,6 +127,7 @@ export default function Page() {
   const [cityInput, setCityInput] = useState(DEFAULT_CITY);
   const [weather, setWeather] = useState<WeatherResponse | null>(null);
   const [favorites, setFavorites] = useState<FavoriteCity[]>([]);
+  const [recentCities, setRecentCities] = useState<string[]>([]);
   const [loadingWeather, setLoadingWeather] = useState(true);
   const [loadingFavorites, setLoadingFavorites] = useState(true);
   const [savingFavorite, setSavingFavorite] = useState(false);
@@ -143,6 +144,33 @@ export default function Page() {
   useEffect(() => {
     window.localStorage.setItem('skycast-temperature-unit', unit);
   }, [unit]);
+
+  useEffect(() => {
+    const storedCities = window.localStorage.getItem('skycast-recent-cities');
+    if (!storedCities) {
+      setRecentCities([DEFAULT_CITY]);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(storedCities) as string[];
+      const filtered = parsed.filter((city): city is string => typeof city === 'string' && city.trim().length > 0);
+      setRecentCities(filtered.slice(0, 5));
+    } catch {
+      setRecentCities([DEFAULT_CITY]);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem('skycast-recent-cities', JSON.stringify(recentCities.slice(0, 5)));
+  }, [recentCities]);
+
+  const rememberCity = (city: string) => {
+    setRecentCities((current) => {
+      const nextCities = [city, ...current.filter((entry) => entry.toLowerCase() !== city.toLowerCase())];
+      return nextCities.slice(0, 5);
+    });
+  };
 
   const fetchFavorites = async () => {
     try {
@@ -172,6 +200,7 @@ export default function Page() {
       const data = (await response.json()) as WeatherResponse;
       setWeather(data);
       setCityInput(data.location.name);
+      rememberCity(data.location.name);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to load forecast.');
     } finally {
@@ -341,6 +370,14 @@ export default function Page() {
               {CITY_SUGGESTIONS.map((city) => (
                 <button key={city} className="search-hint" type="button" onClick={() => setCityInput(city)}>
                   {city}
+                </button>
+              ))}
+            </div>
+
+            <div className="search-hints">
+              {recentCities.map((city) => (
+                <button key={city} className="search-hint" type="button" onClick={() => setCityInput(city)}>
+                  Recent: {city}
                 </button>
               ))}
             </div>
