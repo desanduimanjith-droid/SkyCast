@@ -83,6 +83,8 @@ type WeatherResponse = {
   tips: string[];
 };
 
+type TemperatureUnit = 'c' | 'f';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
 const CITY_SUGGESTIONS = ['Seattle', 'Tokyo', 'Reykjavik', 'Cape Town'];
 const DEFAULT_CITY = 'Austin';
@@ -112,6 +114,11 @@ function safeNumber(value: number | undefined, fallback = 0) {
   return Number.isFinite(value ?? Number.NaN) ? Math.round(value as number) : fallback;
 }
 
+function formatTemperature(value: number, unit: TemperatureUnit) {
+  const nextValue = unit === 'f' ? (value * 9) / 5 + 32 : value;
+  return `${safeNumber(nextValue)}°${unit.toUpperCase()}`;
+}
+
 function LoadingBanner() {
   return <p className="loading-banner">Fetching the latest sky conditions and city forecast...</p>;
 }
@@ -124,6 +131,18 @@ export default function Page() {
   const [loadingFavorites, setLoadingFavorites] = useState(true);
   const [savingFavorite, setSavingFavorite] = useState(false);
   const [error, setError] = useState('');
+  const [unit, setUnit] = useState<TemperatureUnit>('c');
+
+  useEffect(() => {
+    const savedUnit = window.localStorage.getItem('skycast-temperature-unit');
+    if (savedUnit === 'c' || savedUnit === 'f') {
+      setUnit(savedUnit);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem('skycast-temperature-unit', unit);
+  }, [unit]);
 
   const fetchFavorites = async () => {
     try {
@@ -276,6 +295,10 @@ export default function Page() {
             <Compass size={16} />
             Explore
           </a>
+          <button className="button-ghost" type="button" onClick={() => setUnit((value) => (value === 'c' ? 'f' : 'c'))}>
+            <SunMedium size={16} />
+            {unit === 'c' ? 'Switch to °F' : 'Switch to °C'}
+          </button>
           <button className="button-primary" type="button" onClick={handleSaveFavorite} disabled={!weather || savingFavorite}>
             <BookmarkPlus size={16} />
             {savingFavorite ? 'Saving...' : 'Save city'}
@@ -372,14 +395,12 @@ export default function Page() {
               <div>
                 <p className="temperature">
                   {weather ? (
-                    <>
-                      {safeNumber(weather.current.temperature)}<span>deg</span>
-                    </>
+                    formatTemperature(weather.current.temperature, unit)
                   ) : (
                     '...'
                   )}
                 </p>
-                <p className="forecast-note">Feels like {weather ? `${safeNumber(weather.current.feelsLike)} deg` : '-- deg'}</p>
+                <p className="forecast-note">Feels like {weather ? formatTemperature(weather.current.feelsLike, unit) : '--'}</p>
               </div>
 
               <div className="condition-stack">
@@ -425,7 +446,7 @@ export default function Page() {
           {weather?.hourly.map((hour) => (
             <article key={hour.time} className="forecast-card">
               <div className="forecast-time">{formatHour(hour.time)}</div>
-              <p className="forecast-temp">{safeNumber(hour.temperature)} deg</p>
+              <p className="forecast-temp">{formatTemperature(hour.temperature, unit)}</p>
               <div className="forecast-badge">
                 <SunMedium size={14} />
                 {hour.condition}
@@ -455,11 +476,11 @@ export default function Page() {
               </div>
               <div>
                 <p className="forecast-note">High</p>
-                <p className="daily-temp">{safeNumber(day.high)} deg</p>
+                <p className="daily-temp">{formatTemperature(day.high, unit)}</p>
               </div>
               <div>
                 <p className="forecast-note">Low / Rain</p>
-                <p className="daily-temp">{safeNumber(day.low)} deg</p>
+                <p className="daily-temp">{formatTemperature(day.low, unit)}</p>
                 <div className="daily-badge">
                   <Droplets size={14} />
                   {safeNumber(day.chanceOfRain)}%
@@ -548,7 +569,7 @@ export default function Page() {
 
               <div className="forecast-badge">
                 <CloudSun size={14} />
-                {city.temperature} deg - {city.condition}
+                {formatTemperature(city.temperature, unit)} - {city.condition}
               </div>
               <p className="favorite-note">{city.note}</p>
               <p className="forecast-note">Updated {formatTime(city.updatedAt)}</p>
