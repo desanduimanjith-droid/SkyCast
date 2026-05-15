@@ -58,6 +58,11 @@ const port = Number(process.env.PORT ?? 4001);
 
 app.use(cors({ origin: true }));
 app.use(express.json());
+// Simple request logger
+app.use((req, _res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
+  next();
+});
 
 let favorites: FavoriteCity[] = [
   {
