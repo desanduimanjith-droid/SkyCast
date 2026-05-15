@@ -18,17 +18,4 @@ The frontend and backend are split so they can be developed and deployed separat
 - Saved cities with editable notes
 - Backend status and uptime badges
 
-This branch is used for the multi-commit feature pass.
 
-## Run locally
-
-1. Install frontend dependencies:
-	- cd Frontend/weather-cast
-	- npm install
-2. Install backend dependencies:
-	- cd ../../Backend
-	- npm install
-3. Start the backend:
-	- npm run dev
-4. Start the frontend in another terminal:
-	- npm run dev
