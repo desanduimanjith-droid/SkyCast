@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "eslint . --ext .ts,.tsx || true",
+    "format": "prettier --write . || true"
   },
   "dependencies": {
     "lucide-react": "^0.510.0",
