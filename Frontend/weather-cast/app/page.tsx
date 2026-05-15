@@ -83,6 +83,15 @@ type WeatherResponse = {
   tips: string[];
 };
 
+type ServerStatus = {
+  ok: boolean;
+  uptimeSeconds: number;
+  savedCities: number;
+  activeFavorites: number;
+};
+
+type TemperatureUnit = 'c' | 'f';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
 const CITY_SUGGESTIONS = ['Seattle', 'Tokyo', 'Reykjavik', 'Cape Town'];
 const DEFAULT_CITY = 'Austin';
@@ -112,6 +121,11 @@ function safeNumber(value: number | undefined, fallback = 0) {
   return Number.isFinite(value ?? Number.NaN) ? Math.round(value as number) : fallback;
 }
 
+function formatTemperature(value: number, unit: TemperatureUnit) {
+  const nextValue = unit === 'f' ? (value * 9) / 5 + 32 : value;
+  return `${safeNumber(nextValue)}°${unit.toUpperCase()}`;
+}
+
 function LoadingBanner() {
   return <p className="loading-banner">Fetching the latest sky conditions and city forecast...</p>;
 }
@@ -120,10 +134,61 @@ export default function Page() {
   const [cityInput, setCityInput] = useState(DEFAULT_CITY);
   const [weather, setWeather] = useState<WeatherResponse | null>(null);
   const [favorites, setFavorites] = useState<FavoriteCity[]>([]);
+  const [recentCities, setRecentCities] = useState<string[]>([]);
+  const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
+  const [editingFavoriteId, setEditingFavoriteId] = useState<number | null>(null);
+  const [favoriteDrafts, setFavoriteDrafts] = useState<Record<number, string>>({});
   const [loadingWeather, setLoadingWeather] = useState(true);
   const [loadingFavorites, setLoadingFavorites] = useState(true);
   const [savingFavorite, setSavingFavorite] = useState(false);
   const [error, setError] = useState('');
+  const [unit, setUnit] = useState<TemperatureUnit>('c');
+
+  useEffect(() => {
+    const savedUnit = window.localStorage.getItem('skycast-temperature-unit');
+    if (savedUnit === 'c' || savedUnit === 'f') {
+      setUnit(savedUnit);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem('skycast-temperature-unit', unit);
+  }, [unit]);
+
+  useEffect(() => {
+    const storedCities = window.localStorage.getItem('skycast-recent-cities');
+    if (!storedCities) {
+      setRecentCities([DEFAULT_CITY]);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(storedCities) as string[];
+      const filtered = parsed.filter((city): city is string => typeof city === 'string' && city.trim().length > 0);
+      setRecentCities(filtered.slice(0, 5));
+    } catch {
+      setRecentCities([DEFAULT_CITY]);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem('skycast-recent-cities', JSON.stringify(recentCities.slice(0, 5)));
+  }, [recentCities]);
+
+  useEffect(() => {
+    const refreshTimer = window.setInterval(() => {
+      void fetchWeather(cityInput);
+    }, 10 * 60 * 1000);
+
+    return () => window.clearInterval(refreshTimer);
+  }, [cityInput]);
+
+  const rememberCity = (city: string) => {
+    setRecentCities((current) => {
+      const nextCities = [city, ...current.filter((entry) => entry.toLowerCase() !== city.toLowerCase())];
+      return nextCities.slice(0, 5);
+    });
+  };
 
   const fetchFavorites = async () => {
     try {
@@ -134,10 +199,31 @@ export default function Page() {
       }
       const data = (await response.json()) as FavoriteCity[];
       setFavorites(data);
+      setFavoriteDrafts((current) => {
+        const nextDrafts = { ...current };
+        data.forEach((favorite) => {
+          nextDrafts[favorite.id] = nextDrafts[favorite.id] ?? favorite.note;
+        });
+        return nextDrafts;
+      });
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to load saved cities.');
     } finally {
       setLoadingFavorites(false);
+    }
+  };
+
+  const fetchStatus = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/status`);
+      if (!response.ok) {
+        throw new Error('Unable to load server status.');
+      }
+
+      const data = (await response.json()) as ServerStatus;
+      setServerStatus(data);
+    } catch {
+      setServerStatus(null);
     }
   };
 
@@ -153,6 +239,7 @@ export default function Page() {
       const data = (await response.json()) as WeatherResponse;
       setWeather(data);
       setCityInput(data.location.name);
+      rememberCity(data.location.name);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to load forecast.');
     } finally {
@@ -163,6 +250,7 @@ export default function Page() {
   useEffect(() => {
     void fetchFavorites();
     void fetchWeather(DEFAULT_CITY);
+    void fetchStatus();
   }, []);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -221,6 +309,32 @@ export default function Page() {
     }
   };
 
+  const handleUpdateFavoriteNote = async (id: number) => {
+    const note = favoriteDrafts[id]?.trim();
+    if (!note) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/favorites/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ note }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Could not update this note.');
+      }
+
+      setEditingFavoriteId(null);
+      await fetchFavorites();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not update this note.');
+    }
+  };
+
   const currentStats = useMemo(() => {
     if (!weather) {
       return [];
@@ -250,6 +364,37 @@ export default function Page() {
     ];
   }, [weather]);
 
+  const forecastSummary = useMemo(() => {
+    if (!weather) {
+      return [];
+    }
+
+    const warmestDay = weather.daily.reduce((best, candidate) => (candidate.high > best.high ? candidate : best), weather.daily[0]);
+    const rainiestDay = weather.daily.reduce((best, candidate) =>
+      candidate.chanceOfRain > best.chanceOfRain ? candidate : best,
+      weather.daily[0]
+    );
+    const coldestDay = weather.daily.reduce((best, candidate) => (candidate.low < best.low ? candidate : best), weather.daily[0]);
+
+    return [
+      {
+        label: 'Warmest day',
+        value: `${formatDay(warmestDay.day)} · ${formatTemperature(warmestDay.high, unit)}`,
+        note: 'Highest daytime peak in the next seven days.',
+      },
+      {
+        label: 'Rainiest day',
+        value: `${formatDay(rainiestDay.day)} · ${safeNumber(rainiestDay.chanceOfRain)}%`,
+        note: 'Best day to keep a backup indoor plan ready.',
+      },
+      {
+        label: 'Coolest low',
+        value: `${formatDay(coldestDay.day)} · ${formatTemperature(coldestDay.low, unit)}`,
+        note: 'The coldest overnight reading in the forecast.',
+      },
+    ];
+  }, [unit, weather]);
+
   const topInsights = weather?.insights ?? [];
   const topAlerts = weather?.alerts ?? [];
   const topTips = weather?.tips ?? [];
@@ -276,6 +421,10 @@ export default function Page() {
             <Compass size={16} />
             Explore
           </a>
+          <button className="button-ghost" type="button" onClick={() => setUnit((value) => (value === 'c' ? 'f' : 'c'))}>
+            <SunMedium size={16} />
+            {unit === 'c' ? 'Switch to °F' : 'Switch to °C'}
+          </button>
           <button className="button-primary" type="button" onClick={handleSaveFavorite} disabled={!weather || savingFavorite}>
             <BookmarkPlus size={16} />
             {savingFavorite ? 'Saving...' : 'Save city'}
@@ -321,7 +470,31 @@ export default function Page() {
                 </button>
               ))}
             </div>
+
+            <div className="search-hints">
+              {recentCities.map((city) => (
+                <button key={city} className="search-hint" type="button" onClick={() => setCityInput(city)}>
+                  Recent: {city}
+                </button>
+              ))}
+            </div>
           </form>
+
+          <div className="forecast-badge" style={{ marginTop: '14px' }}>
+            <RefreshCw size={14} />
+            Auto-refreshes every 10 minutes for the active city
+          </div>
+
+          <div className="inline-actions" style={{ marginTop: '12px' }}>
+            <div className="forecast-badge">
+              <ShieldAlert size={14} />
+              {serverStatus?.ok ? `Server online · ${serverStatus.uptimeSeconds}s uptime` : 'Server status unavailable'}
+            </div>
+            <div className="forecast-badge">
+              <CloudSun size={14} />
+              {serverStatus ? `${serverStatus.savedCities} saved cities ready to sync` : 'Saved cities loaded from the API'}
+            </div>
+          </div>
 
           {loadingWeather ? <LoadingBanner /> : null}
           {error ? <div className="error-banner">{error}</div> : null}
@@ -372,14 +545,12 @@ export default function Page() {
               <div>
                 <p className="temperature">
                   {weather ? (
-                    <>
-                      {safeNumber(weather.current.temperature)}<span>deg</span>
-                    </>
+                    formatTemperature(weather.current.temperature, unit)
                   ) : (
                     '...'
                   )}
                 </p>
-                <p className="forecast-note">Feels like {weather ? `${safeNumber(weather.current.feelsLike)} deg` : '-- deg'}</p>
+                <p className="forecast-note">Feels like {weather ? formatTemperature(weather.current.feelsLike, unit) : '--'}</p>
               </div>
 
               <div className="condition-stack">
@@ -397,6 +568,31 @@ export default function Page() {
                 </article>
               ))}
             </div>
+
+            {weather ? (
+              <div className="metrics-grid">
+                <article className="metric-card">
+                  <h3>Sunrise</h3>
+                  <strong>{formatTime(weather.current.sunrise)}</strong>
+                  <p>Early light for the selected city.</p>
+                </article>
+                <article className="metric-card">
+                  <h3>Sunset</h3>
+                  <strong>{formatTime(weather.current.sunset)}</strong>
+                  <p>Daylight wraps up for planning the evening.</p>
+                </article>
+                <article className="metric-card">
+                  <h3>Updated</h3>
+                  <strong>{formatTime(weather.current.updatedAt)}</strong>
+                  <p>Freshest reading received from the backend.</p>
+                </article>
+                <article className="metric-card">
+                  <h3>Location</h3>
+                  <strong>{weather.location.timezone}</strong>
+                  <p>Timezone returned by the weather service.</p>
+                </article>
+              </div>
+            ) : null}
 
             <div className="inline-actions">
               <button className="button-soft" type="button" onClick={handleSaveFavorite} disabled={!weather || savingFavorite}>
@@ -425,7 +621,7 @@ export default function Page() {
           {weather?.hourly.map((hour) => (
             <article key={hour.time} className="forecast-card">
               <div className="forecast-time">{formatHour(hour.time)}</div>
-              <p className="forecast-temp">{safeNumber(hour.temperature)} deg</p>
+              <p className="forecast-temp">{formatTemperature(hour.temperature, unit)}</p>
               <div className="forecast-badge">
                 <SunMedium size={14} />
                 {hour.condition}
@@ -455,11 +651,11 @@ export default function Page() {
               </div>
               <div>
                 <p className="forecast-note">High</p>
-                <p className="daily-temp">{safeNumber(day.high)} deg</p>
+                <p className="daily-temp">{formatTemperature(day.high, unit)}</p>
               </div>
               <div>
                 <p className="forecast-note">Low / Rain</p>
-                <p className="daily-temp">{safeNumber(day.low)} deg</p>
+                <p className="daily-temp">{formatTemperature(day.low, unit)}</p>
                 <div className="daily-badge">
                   <Droplets size={14} />
                   {safeNumber(day.chanceOfRain)}%
@@ -468,6 +664,18 @@ export default function Page() {
             </article>
           )) ?? null}
         </div>
+
+        {forecastSummary.length > 0 ? (
+          <div className="metrics-grid" style={{ marginTop: '16px' }}>
+            {forecastSummary.map((item) => (
+              <article key={item.label} className="metric-card">
+                <h3>{item.label}</h3>
+                <strong>{item.value}</strong>
+                <p>{item.note}</p>
+              </article>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="section" id="insights">
@@ -548,10 +756,40 @@ export default function Page() {
 
               <div className="forecast-badge">
                 <CloudSun size={14} />
-                {city.temperature} deg - {city.condition}
+                {formatTemperature(city.temperature, unit)} - {city.condition}
               </div>
-              <p className="favorite-note">{city.note}</p>
-              <p className="forecast-note">Updated {formatTime(city.updatedAt)}</p>
+              {editingFavoriteId === city.id ? (
+                <div className="search-panel">
+                  <textarea
+                    className="search-input"
+                    rows={3}
+                    value={favoriteDrafts[city.id] ?? city.note}
+                    onChange={(event) =>
+                      setFavoriteDrafts((current) => ({
+                        ...current,
+                        [city.id]: event.target.value,
+                      }))
+                    }
+                    aria-label={`Edit note for ${city.name}`}
+                  />
+                  <div className="inline-actions">
+                    <button className="button-primary" type="button" onClick={() => void handleUpdateFavoriteNote(city.id)}>
+                      Save note
+                    </button>
+                    <button className="button-ghost" type="button" onClick={() => setEditingFavoriteId(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="favorite-note">{city.note}</p>
+              )}
+              <div className="inline-actions">
+                <button className="button-ghost" type="button" onClick={() => setEditingFavoriteId(city.id)}>
+                  Edit note
+                </button>
+                <p className="forecast-note">Updated {formatTime(city.updatedAt)}</p>
+              </div>
             </article>
           ))}
         </div>
