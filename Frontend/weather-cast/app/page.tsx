@@ -503,6 +503,31 @@ export default function Page() {
               ))}
             </div>
 
+            {weather ? (
+              <div className="metrics-grid">
+                <article className="metric-card">
+                  <h3>Sunrise</h3>
+                  <strong>{formatTime(weather.current.sunrise)}</strong>
+                  <p>Early light for the selected city.</p>
+                </article>
+                <article className="metric-card">
+                  <h3>Sunset</h3>
+                  <strong>{formatTime(weather.current.sunset)}</strong>
+                  <p>Daylight wraps up for planning the evening.</p>
+                </article>
+                <article className="metric-card">
+                  <h3>Updated</h3>
+                  <strong>{formatTime(weather.current.updatedAt)}</strong>
+                  <p>Freshest reading received from the backend.</p>
+                </article>
+                <article className="metric-card">
+                  <h3>Location</h3>
+                  <strong>{weather.location.timezone}</strong>
+                  <p>Timezone returned by the weather service.</p>
+                </article>
+              </div>
+            ) : null}
+
             <div className="inline-actions">
               <button className="button-soft" type="button" onClick={handleSaveFavorite} disabled={!weather || savingFavorite}>
                 <Star size={16} />
