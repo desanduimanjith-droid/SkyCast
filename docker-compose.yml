@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  backend:
+    build: ./Backend
+    ports:
+      - '4001:4001'
+    environment:
+      - PORT=4001
+  frontend:
+    build: ./Frontend/weather-cast
+    ports:
+      - '3000:3000'
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:4001
