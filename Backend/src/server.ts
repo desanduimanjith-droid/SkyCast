@@ -208,6 +208,15 @@ app.get('/api/health', (_request, response) => {
   response.json({ ok: true });
 });
 
+app.get('/api/status', (_request, response) => {
+  response.json({
+    ok: true,
+    uptimeSeconds: Math.round(process.uptime()),
+    savedCities: favorites.length,
+    activeFavorites: favorites.filter((city) => city.starred).length,
+  });
+});
+
 app.get('/api/favorites', (_request, response) => {
   response.json(favorites);
 });
