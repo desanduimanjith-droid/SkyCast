@@ -364,6 +364,37 @@ export default function Page() {
     ];
   }, [weather]);
 
+  const forecastSummary = useMemo(() => {
+    if (!weather) {
+      return [];
+    }
+
+    const warmestDay = weather.daily.reduce((best, candidate) => (candidate.high > best.high ? candidate : best), weather.daily[0]);
+    const rainiestDay = weather.daily.reduce((best, candidate) =>
+      candidate.chanceOfRain > best.chanceOfRain ? candidate : best,
+      weather.daily[0]
+    );
+    const coldestDay = weather.daily.reduce((best, candidate) => (candidate.low < best.low ? candidate : best), weather.daily[0]);
+
+    return [
+      {
+        label: 'Warmest day',
+        value: `${formatDay(warmestDay.day)} · ${formatTemperature(warmestDay.high, unit)}`,
+        note: 'Highest daytime peak in the next seven days.',
+      },
+      {
+        label: 'Rainiest day',
+        value: `${formatDay(rainiestDay.day)} · ${safeNumber(rainiestDay.chanceOfRain)}%`,
+        note: 'Best day to keep a backup indoor plan ready.',
+      },
+      {
+        label: 'Coolest low',
+        value: `${formatDay(coldestDay.day)} · ${formatTemperature(coldestDay.low, unit)}`,
+        note: 'The coldest overnight reading in the forecast.',
+      },
+    ];
+  }, [unit, weather]);
+
   const topInsights = weather?.insights ?? [];
   const topAlerts = weather?.alerts ?? [];
   const topTips = weather?.tips ?? [];
@@ -633,6 +664,18 @@ export default function Page() {
             </article>
           )) ?? null}
         </div>
+
+        {forecastSummary.length > 0 ? (
+          <div className="metrics-grid" style={{ marginTop: '16px' }}>
+            {forecastSummary.map((item) => (
+              <article key={item.label} className="metric-card">
+                <h3>{item.label}</h3>
+                <strong>{item.value}</strong>
+                <p>{item.note}</p>
+              </article>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="section" id="insights">
