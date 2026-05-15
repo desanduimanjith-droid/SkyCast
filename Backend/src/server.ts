@@ -259,6 +259,26 @@ app.post('/api/favorites', async (request, response) => {
   response.status(201).json(favorite);
 });
 
+app.patch('/api/favorites/:id', (request, response) => {
+  const id = Number(request.params.id);
+  const note = String(request.body?.note ?? '').trim();
+
+  if (!note) {
+    response.status(400).json({ error: 'Note is required.' });
+    return;
+  }
+
+  const favorite = favorites.find((city) => city.id === id);
+  if (!favorite) {
+    response.status(404).json({ error: 'Favorite city not found.' });
+    return;
+  }
+
+  favorite.note = note;
+  favorite.updatedAt = new Date().toISOString();
+  response.json(favorite);
+});
+
 app.delete('/api/favorites/:id', (request, response) => {
   const id = Number(request.params.id);
   favorites = favorites.filter((city) => city.id !== id);
