@@ -83,6 +83,13 @@ type WeatherResponse = {
   tips: string[];
 };
 
+type ServerStatus = {
+  ok: boolean;
+  uptimeSeconds: number;
+  savedCities: number;
+  activeFavorites: number;
+};
+
 type TemperatureUnit = 'c' | 'f';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
@@ -128,6 +135,7 @@ export default function Page() {
   const [weather, setWeather] = useState<WeatherResponse | null>(null);
   const [favorites, setFavorites] = useState<FavoriteCity[]>([]);
   const [recentCities, setRecentCities] = useState<string[]>([]);
+  const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
   const [loadingWeather, setLoadingWeather] = useState(true);
   const [loadingFavorites, setLoadingFavorites] = useState(true);
   const [savingFavorite, setSavingFavorite] = useState(false);
@@ -196,6 +204,20 @@ export default function Page() {
     }
   };
 
+  const fetchStatus = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/status`);
+      if (!response.ok) {
+        throw new Error('Unable to load server status.');
+      }
+
+      const data = (await response.json()) as ServerStatus;
+      setServerStatus(data);
+    } catch {
+      setServerStatus(null);
+    }
+  };
+
   const fetchWeather = async (city: string) => {
     try {
       setError('');
@@ -219,6 +241,7 @@ export default function Page() {
   useEffect(() => {
     void fetchFavorites();
     void fetchWeather(DEFAULT_CITY);
+    void fetchStatus();
   }, []);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -394,6 +417,17 @@ export default function Page() {
           <div className="forecast-badge" style={{ marginTop: '14px' }}>
             <RefreshCw size={14} />
             Auto-refreshes every 10 minutes for the active city
+          </div>
+
+          <div className="inline-actions" style={{ marginTop: '12px' }}>
+            <div className="forecast-badge">
+              <ShieldAlert size={14} />
+              {serverStatus?.ok ? `Server online · ${serverStatus.uptimeSeconds}s uptime` : 'Server status unavailable'}
+            </div>
+            <div className="forecast-badge">
+              <CloudSun size={14} />
+              {serverStatus ? `${serverStatus.savedCities} saved cities ready to sync` : 'Saved cities loaded from the API'}
+            </div>
           </div>
 
           {loadingWeather ? <LoadingBanner /> : null}
