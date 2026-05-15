@@ -136,6 +136,8 @@ export default function Page() {
   const [favorites, setFavorites] = useState<FavoriteCity[]>([]);
   const [recentCities, setRecentCities] = useState<string[]>([]);
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
+  const [editingFavoriteId, setEditingFavoriteId] = useState<number | null>(null);
+  const [favoriteDrafts, setFavoriteDrafts] = useState<Record<number, string>>({});
   const [loadingWeather, setLoadingWeather] = useState(true);
   const [loadingFavorites, setLoadingFavorites] = useState(true);
   const [savingFavorite, setSavingFavorite] = useState(false);
@@ -197,6 +199,13 @@ export default function Page() {
       }
       const data = (await response.json()) as FavoriteCity[];
       setFavorites(data);
+      setFavoriteDrafts((current) => {
+        const nextDrafts = { ...current };
+        data.forEach((favorite) => {
+          nextDrafts[favorite.id] = nextDrafts[favorite.id] ?? favorite.note;
+        });
+        return nextDrafts;
+      });
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to load saved cities.');
     } finally {
@@ -297,6 +306,32 @@ export default function Page() {
       await fetchFavorites();
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not remove this city.');
+    }
+  };
+
+  const handleUpdateFavoriteNote = async (id: number) => {
+    const note = favoriteDrafts[id]?.trim();
+    if (!note) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/favorites/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ note }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Could not update this note.');
+      }
+
+      setEditingFavoriteId(null);
+      await fetchFavorites();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not update this note.');
     }
   };
 
@@ -680,8 +715,38 @@ export default function Page() {
                 <CloudSun size={14} />
                 {formatTemperature(city.temperature, unit)} - {city.condition}
               </div>
-              <p className="favorite-note">{city.note}</p>
-              <p className="forecast-note">Updated {formatTime(city.updatedAt)}</p>
+              {editingFavoriteId === city.id ? (
+                <div className="search-panel">
+                  <textarea
+                    className="search-input"
+                    rows={3}
+                    value={favoriteDrafts[city.id] ?? city.note}
+                    onChange={(event) =>
+                      setFavoriteDrafts((current) => ({
+                        ...current,
+                        [city.id]: event.target.value,
+                      }))
+                    }
+                    aria-label={`Edit note for ${city.name}`}
+                  />
+                  <div className="inline-actions">
+                    <button className="button-primary" type="button" onClick={() => void handleUpdateFavoriteNote(city.id)}>
+                      Save note
+                    </button>
+                    <button className="button-ghost" type="button" onClick={() => setEditingFavoriteId(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="favorite-note">{city.note}</p>
+              )}
+              <div className="inline-actions">
+                <button className="button-ghost" type="button" onClick={() => setEditingFavoriteId(city.id)}>
+                  Edit note
+                </button>
+                <p className="forecast-note">Updated {formatTime(city.updatedAt)}</p>
+              </div>
             </article>
           ))}
         </div>
