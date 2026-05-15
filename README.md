@@ -32,5 +32,3 @@ This branch is used for the multi-commit feature pass.
 	- npm run dev
 4. Start the frontend in another terminal:
 	- npm run dev
-
-The frontend expects the backend at http://localhost:4001 by default.
